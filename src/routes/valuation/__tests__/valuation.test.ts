@@ -1,16 +1,18 @@
-import axios from 'axios';
-import AxiosMockAdapter from 'axios-mock-adapter';
 import { fastify } from '~root/test/fastify';
 import { VehicleValuationRequest } from '../types/vehicle-valuation-request';
-import { afterEach, beforeEach } from 'vitest';
+import { superCarValuationStubResponse } from './data'
+
+import axios from 'axios';
+import { afterEach, MockInstance } from 'vitest';
 
 describe('ValuationController (e2e)', () => {
 
-  const mock = new AxiosMockAdapter(axios);
+  let apiClient: MockInstance;
+  let ormClient: MockInstance;
 
-  beforeEach( () => {
-    mock.reset();
-  })
+    afterEach( () => {
+      vi.restoreAllMocks();
+    });
 
   describe('PUT /valuations/', () => {
     it('should return 404 if VRM is missing', async () => {
@@ -75,8 +77,9 @@ describe('ValuationController (e2e)', () => {
         mileage: 10000,
       };
 
-      mock.onGet("https://run.mocky.io/v3/9245229e-5c57-44e1-964b-36c7fb29168b/valuations/ABC123?mileage=10000").reply(200,
-        { valuation : {lowerValue: 1000, upperValue: 2000 }});
+      apiClient = vi.spyOn(axios, 'get').mockResolvedValue({data: superCarValuationStubResponse});
+      ormClient = vi.spyOn(fastify.orm, 'getRepository').mockReturnValue({
+        insert: vi.fn().mockResolvedValue({}),} as any);
 
       const res = await fastify.inject({
         url: '/valuations/ABC123',
