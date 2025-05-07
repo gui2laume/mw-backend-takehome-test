@@ -1,7 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { VehicleValuationRequest } from './types/vehicle-valuation-request';
-import { fetchValuationFromSuperCarValuation } from '@app/super-car/super-car-valuation';
 import { VehicleValuation } from '@app/models/vehicle-valuation';
+import { VehicleValuationResponse } from '@app/routes/valuation/types/vehicle-valuation-response';
+import { fetchValuation, findValuation } from '@app/services/valuation-service';
 
 export function valuationRoutes(fastify: FastifyInstance) {
   fastify.get<{
@@ -9,7 +10,6 @@ export function valuationRoutes(fastify: FastifyInstance) {
       vrm: string;
     };
   }>('/valuations/:vrm', async (request, reply) => {
-    const valuationRepository = fastify.orm.getRepository(VehicleValuation);
     const { vrm } = request.params;
 
     if (vrm === null || vrm === '' || vrm.length > 7) {
@@ -18,7 +18,7 @@ export function valuationRoutes(fastify: FastifyInstance) {
         .send({ message: 'vrm must be 7 characters or less', statusCode: 400 });
     }
 
-    const result = await valuationRepository.findOneBy({ vrm: vrm });
+    const  result = await findValuation(vrm, fastify);
 
     if (result == null) {
       return reply
@@ -38,7 +38,6 @@ export function valuationRoutes(fastify: FastifyInstance) {
       vrm: string;
     };
   }>('/valuations/:vrm', async (request, reply) => {
-    const valuationRepository = fastify.orm.getRepository(VehicleValuation);
     const { vrm } = request.params;
     const { mileage } = request.body;
 
@@ -56,18 +55,29 @@ export function valuationRoutes(fastify: FastifyInstance) {
           statusCode: 400,
         });
     }
-
-    const valuation = await fetchValuationFromSuperCarValuation(vrm, mileage);
-
-    // Save to DB.
-    await valuationRepository.insert(valuation).catch((err) => {
-      if (err.code !== 'SQLITE_CONSTRAINT') {
-        throw err;
+    try {
+      const valuation = await fetchValuation(vrm, mileage, fastify);
+      const response: VehicleValuationResponse = new VehicleValuationResponse();
+      if (valuation == null) {
+        return reply
+          .code(404)
+          .send({
+            message: `Valuation for VRM ${vrm} not found`,
+            statusCode: 404,
+          });
       }
-    });
-
-    fastify.log.info('Valuation created: ', valuation);
-
-    return valuation;
+      response.vrm = valuation.vrm;
+      response.highestValue = valuation.highestValue;
+      response.lowestValue = valuation.lowestValue;
+      return response;
+    } catch (e) {
+      return reply
+        .code(503)
+        .send({
+          message: 'Service Unavailable',
+          statusCode: 503,
+        });
+    }
   });
 }
+
